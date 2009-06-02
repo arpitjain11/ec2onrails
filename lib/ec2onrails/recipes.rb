@@ -48,8 +48,8 @@ Capistrano::Configuration.instance.load do
   set :use_sudo, false
   set :user, "app"
 
-  #in case any changes were made to the configs
-  before "deploy:cold", "ec2onrails:setup"
+  # Since :setup does a deploy:update_code, remove that directory before deploy:cold gets run
+  before "deploy:cold", "ec2onrails:setup", "ec2onrails:remove_release_directory"  
 
   after "deploy:symlink", "ec2onrails:server:set_roles", "ec2onrails:server:init_services"
   after "deploy:cold", "ec2onrails:db:init_backup", "ec2onrails:db:optimize", "ec2onrails:server:restrict_sudo_access"
@@ -111,6 +111,18 @@ Capistrano::Configuration.instance.load do
     end
 
     desc <<-DESC
+      Remove the latest release directory.
+      Since deploy:cold ends up runing deploy:update_code twice in the
+      same release directory (once in :setup, and once in deploy:cold),
+      problems may occur if we don't delete the release directory
+      before the second deploy:update_code.
+      This task should be called at the end of :setup.
+    DESC
+    task :remove_release_directory do
+      run "rm -rf #{release_path}; true"
+    end
+
+    desc <<-DESC
       Prepare a newly-started instance for a cold deploy.
     DESC
     task :setup do
@@ -118,8 +130,6 @@ Capistrano::Configuration.instance.load do
       # the app's code to the server before we do any other setup
       server.upload_deploy_keys
       deploy.setup
-      # FIXME On next update_code, when directory already exists, it gives error.
-      # Fixed by overwriting cap deploy:cold above
       deploy.update_code
 
       ec2onrails.server.allow_sudo do
