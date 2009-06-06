@@ -445,8 +445,8 @@ Capistrano::Configuration.instance(:must_exist).load do
           set :user, 'root'
           sessions.clear #clear out sessions cache..... this way the ssh connections are reinitialized
           
-          # Remove the app user from the "rootequiv" group, this removes full sudo ability
-          run "deluser app rootequiv"
+          # Remove the app user from the "rootequiv" group if it exists in group, this removes full sudo ability
+          run "if [ $(id app | grep -c rootequiv) -ne 0 ]; then deluser app rootequiv; fi"
         ensure
           set :user, old_user
           sessions.clear

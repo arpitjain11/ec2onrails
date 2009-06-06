@@ -118,8 +118,8 @@ Capistrano::Configuration.instance.load do
       # we now have some things being included inside the app so we deploy
       # the app's code to the server before we do any other setup
       server.upload_deploy_keys
-      deploy.setup
-      deploy.update_code
+      #deploy.setup
+      #deploy.update_code
       
       ec2onrails.server.allow_sudo do
         server.set_timezone
