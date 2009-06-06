@@ -1,6 +1,6 @@
 Capistrano::Configuration.instance.load do
   cfg = ec2onrails_config
-  
+
   namespace :ec2onrails do
     desc <<-DESC
       Deploy and restore database from S3
@@ -12,10 +12,10 @@ Capistrano::Configuration.instance.load do
       db.restore
       deploy.migrations
     end
-    
+
     namespace :db do
       desc <<-DESC
-        [internal] Load configuration info for the database from 
+        [internal] Load configuration info for the database from
         config/database.yml, and start mysql (it must be running
         in order to interact with it).
       DESC
@@ -23,16 +23,16 @@ Capistrano::Configuration.instance.load do
         unless hostnames_for_role(:db, :primary => true).empty?
           db_config = YAML::load(ERB.new(File.read("config/database.yml")).result)[rails_env.to_s] || {}
           cfg[:db_name]     ||= db_config['database']
-          cfg[:db_user]     ||= db_config['username'] || db_config['user'] 
+          cfg[:db_user]     ||= db_config['username'] || db_config['user']
           cfg[:db_password] ||= db_config['password']
           cfg[:db_host]     ||= db_config['host']
           cfg[:db_port]     ||= db_config['port']
           cfg[:db_socket]   ||= db_config['socket']
-        
+
           if (cfg[:db_host].nil? || cfg[:db_host].empty?) && (cfg[:db_socket].nil? || cfg[:db_socket].empty?)
               raise "ERROR: missing database config. Make sure database.yml contains a '#{rails_env}' section with either 'host: hostname' or 'socket: /var/run/mysqld/mysqld.sock'."
           end
-        
+
           [cfg[:db_name], cfg[:db_user], cfg[:db_password]].each do |s|
             if s.nil? || s.empty?
               raise "ERROR: missing database config. Make sure database.yml contains a '#{rails_env}' section with a database name, user, and password."
@@ -42,7 +42,7 @@ Capistrano::Configuration.instance.load do
           end
         end
       end
-      
+
       desc <<-DESC
         Create the MySQL database. Assumes there is no MySQL root \
         password. To create a MySQL root password create a task that's run \
@@ -53,12 +53,12 @@ Capistrano::Configuration.instance.load do
         load_config
         start
         sleep(5) #make sure the db has some time to start up!
-        
+
         #NOTE: if these commands fail, it is most likely because the command has already been run....
 
         cmds = []
         #sometimes there is a test database that comes with the default installation of MySQL...get rid of it!
-        
+
         cmds << %{mysql -u root -e "drop database if exists test; flush privileges;"}
         # removing anonymous mysql accounts
         cmds << %{mysql -u root -D mysql -e "delete from db where User = ''; flush privileges;"}
@@ -70,7 +70,7 @@ Capistrano::Configuration.instance.load do
         cmds << %{mysql -u root -e "grant all on \\`#{cfg[:db_name]}\\`.* to '#{cfg[:db_user]}'@'%' identified by '#{cfg[:db_password]}';"}
         cmds << %{mysql -u root -e "grant reload on *.* to '#{cfg[:db_user]}'@'%' identified by '#{cfg[:db_password]}';"}
         cmds << %{mysql -u root -e "grant super on *.* to '#{cfg[:db_user]}'@'%' identified by '#{cfg[:db_password]}';"}
-        
+
         cmds.each do |cmd|
           begin
             run cmd
@@ -79,34 +79,34 @@ Capistrano::Configuration.instance.load do
               puts "  CONTINUING: this command was previously run, so continuing"
           end
         end
-        
+
       end
-      
+
       desc <<-DESC
         Move the MySQL database to Amazon's Elastic Block Store (EBS), \
         which is a persistant data store for the cloud.
         OPTIONAL PARAMETERS:
           * SIZE: Pass in a number representing the GB's to hold, like 10. \
             It will default to 10 gigs.
-          * VOLUME_ID: The volume_id to use for the mysql database    
+          * VOLUME_ID: The volume_id to use for the mysql database
         NOTE: keep track of the volume ID, as you'll want to keep this for your \
         records and probably add it to the :db role in your deploy.rb file \
         (see the ec2onrails sample deploy.rb file for additional information)
       DESC
-      task :enable_ebs, :roles => :db, :only => { :primary => true } do        
+      task :enable_ebs, :roles => :db, :only => { :primary => true } do
         # based off of Eric's work:
         # http://developer.amazonwebservices.com/connect/entry.jspa?externalID=1663&categoryID=100
         #
         # EXPLAINATION:
         # There is a lot going on here!  At the end, the setup should be:
-        #   * create EBS volume if run outside of the ec2onrails:setup and 
+        #   * create EBS volume if run outside of the ec2onrails:setup and
         #     VOLUME_ID is not passed in when the cap task is called
         #   * EBS volume attached to /dev/sdh
         #   * format to xfs if new or do a xfs_check if previously existed
         #   * mounted on /var/local and update /etc/fstab
         #   * move /mnt/mysql_data -> /var/local/mysql_data
         #   * move /mnt/log/mysql  -> /var/local/log/mysql
-        #   * change mysql configs by writing /etc/mysql/conf.d/mysql-ec2-ebs.cnf 
+        #   * change mysql configs by writing /etc/mysql/conf.d/mysql-ec2-ebs.cnf
         #   * keep a copy of the mysql configs with the EBS volume, and if that volume is hooked into
         #     another instance, make sure the mysql configs that go with that volume are symlinked to /etc/mysql
         #   * update the file locations of the mysql binary logs in /mnt/log/mysql/mysql-bin.index
@@ -127,23 +127,23 @@ Capistrano::Configuration.instance.load do
         #  * right now we force this task to only be run on one server; that works for db :primary => true
         #    But what is the best way to make this work if it needs to setup multiple servers (like db slaves)?
         #    I need to figure out how to do a direct mapping from a server definition to a ebs_vol_id
-        #  * when we enable slaves and we setup ebs volumes on them, make it transparent to the user.  
+        #  * when we enable slaves and we setup ebs volumes on them, make it transparent to the user.
         #    have the slave create a snapshot of the db.master volume, and then use that to mount from
         #  * need to do a rollback that if the volume is created but something fails, lets uncreate it?
         #    carefull though!  If it fails towards the end when information is copied over, it could cause information
         #    to be lost!
         #
-        
+
         mysql_dir_root = '/var/local'
         block_mnt      = '/dev/sdh'
         servers = find_servers_for_task(current_task)
-        
+
         if servers.empty?
           raise Capistrano::NoMatchingServersError, "`#{task.fully_qualified_name}' is only run for servers matching #{task.options.inspect}, but no servers matched"
         elsif servers.size > 1
           raise Capistrano::Error, "`#{task.fully_qualified_name}' is can only be run on one server, not #{server.size}"
         end
-        
+
         vol_id = ENV['VOLUME_ID'] || servers.first.options[:ebs_vol_id]
 
         #HACK!  capistrano doesn't allow arguments to be passed in if we call this task as a method, like 'db.enable_ebs'
@@ -167,7 +167,7 @@ Capistrano::Configuration.instance.load do
             puts output
             vol_id = (output =~ /^VOLUME\t(.+?)\t/ && $1)
             puts "NOTE: remember that vol_id"
-            sleep(2)          
+            sleep(2)
           end
           vol_id.strip! if vol_id
           if quiet_capture("mount | grep -inr '#{block_mnt}' || echo ''").empty?
@@ -175,15 +175,15 @@ Capistrano::Configuration.instance.load do
             puts "running: #{cmd}"
             output = `#{cmd}`
             puts output
-            if output =~ /Client.InvalidVolume.ZoneMismatch/i              
+            if output =~ /Client.InvalidVolume.ZoneMismatch/i
               raise Exception, "The volume you are trying to attach does not reside in the zone of your instance.  Stopping!"
             end
       			while !system( "ec2-describe-volumes | grep #{vol_id} | grep attached" )
       				puts "Waiting for #{vol_id} to be attached..."
-      				sleep 1            
+      				sleep 1
       			end
           end
-          
+
           ec2onrails.server.allow_sudo do
             # try to format the volume... if it is already formatted, lets run a check on
             # it to make sure it is ok, and then continue on
@@ -204,12 +204,12 @@ Capistrano::Configuration.instance.load do
               puts "Checking if the filesystem needs to be created (if you created #{vol_id} yourself)"
               existing = quiet_capture( "mkfs.xfs /dev/sdh", :via => 'sudo' ).match( /existing filesystem/ )
               sudo "xfs_check #{block_mnt}"
-              # Restart the db if it 
+              # Restart the db if it
               start if start_stop_db && existing
             else
-              sudo "mkfs.xfs #{block_mnt}"  
+              sudo "mkfs.xfs #{block_mnt}"
             end
-            
+
             # if not added to /etc/fstab, lets do so
             sudo "sh -c \"grep -iqn '#{mysql_dir_root}' /etc/fstab || echo '#{block_mnt} #{mysql_dir_root} xfs noatime 0 0' >> /etc/fstab\""
             sudo "mkdir -p #{mysql_dir_root}"
@@ -233,7 +233,7 @@ Capistrano::Configuration.instance.load do
             sudo "ln -fs #{mysql_dir_root}/log/mysql /mnt/log/mysql"
             quiet_capture("sudo sh -c \"test -f #{mysql_dir_root}/log/mysql/mysql-bin.index && \
                   perl -pi -e 's%/mnt/log/%#{mysql_dir_root}/log/%' #{mysql_dir_root}/log/mysql/mysql-bin.index\"") rescue false
-            
+
             if quiet_capture("test -d /var/local/etc/mysql && echo 'yes'").empty?
               txt = <<-FILE
 [mysqld]
@@ -245,7 +245,7 @@ FILE
               put txt, '/tmp/mysql-ec2-ebs.cnf'
               sudo 'mv /tmp/mysql-ec2-ebs.cnf /etc/mysql/conf.d/mysql-ec2-ebs.cnf'
 
-              #keep a copy 
+              #keep a copy
               sudo "rsync -aR /etc/mysql #{mysql_dir_root}/"
             end
             # lets use the mysql configs on the EBS volume
@@ -260,25 +260,25 @@ DOMAIN:    #{fetch(:domain, 'undefined')}
 
 Modify this volume at your own risk
 FILE
-      
+
             put txt, "/tmp/VOLUME-README"
             sudo "mv /tmp/VOLUME-README #{mysql_dir_root}/VOLUME-README"
             sudo "touch /etc/ec2onrails/ebs_info.yml"
             ebs_info = quiet_capture("cat /etc/ec2onrails/ebs_info.yml")
 
             ebs_info = ebs_info.empty? ? {} : YAML::load(ebs_info)
-            ebs_info[mysql_dir_root] = {'block_loc' => block_mnt, 'volume_id' => vol_id} 
+            ebs_info[mysql_dir_root] = {'block_loc' => block_mnt, 'volume_id' => vol_id}
             put(ebs_info.to_yaml, "/tmp/ebs_info.yml")
             sudo "mv /tmp/ebs_info.yml /etc/ec2onrails/ebs_info.yml"
             #lets start it back up
-            start  
+            start
           end #end of sudo
         end
       end
-      
-      
+
+
       desc <<-DESC
-        [internal] Make sure the MySQL server has been started, just in case the db role 
+        [internal] Make sure the MySQL server has been started, just in case the db role
         hasn't been set, e.g. when called from ec2onrails:setup.
         (But don't enable monitoring on it.)
       DESC
@@ -289,8 +289,8 @@ FILE
       task :stop, :roles => :db do
         sudo "god stop db_primary"
       end
-      
-      
+
+
       desc <<-DESC
         Drop the MySQL database. Assumes there is no MySQL root \
         password. If there is a MySQL root password, create a task that removes \
@@ -300,7 +300,7 @@ FILE
         load_config
         run %{mysql -u root -e "drop database if exists \\`#{cfg[:db_name]}\\`;"}
       end
-      
+
       desc <<-DESC
         db:drop and db:create.
       DESC
@@ -308,7 +308,7 @@ FILE
         drop
         create
       end
-      
+
       desc <<-DESC
         Set a root password for MySQL, using the variable mysql_root_password \
         if it is set. If this is done db:drop won't work.
@@ -324,7 +324,7 @@ FILE
           end
         end
       end
-      
+
       desc <<-DESC
         Dump the MySQL database to ebs (if enabled) or the S3 bucket specified by \
         ec2onrails_config[:archive_to_bucket]. The filename will be \
@@ -333,7 +333,7 @@ FILE
       task :archive, :roles => :db do
         run "/usr/local/ec2onrails/bin/backup_app_db --bucket #{cfg[:archive_to_bucket]} --dir #{cfg[:archive_to_bucket_subdir]}"
       end
-      
+
       desc <<-DESC
         Restore the MySQL database from the S3 bucket specified by \
         ec2onrails_config[:restore_from_bucket]. The archive filename is \
@@ -342,10 +342,10 @@ FILE
       task :restore, :roles => :db do
         run "/usr/local/ec2onrails/bin/restore_app_db --bucket #{cfg[:restore_from_bucket]} --dir #{cfg[:restore_from_bucket_subdir]}"
       end
-      
+
       desc <<-DESC
         [internal] Initialize the default backup folder on S3 (i.e. do a full
-        backup of the newly-created db so the automatic incremental backups 
+        backup of the newly-created db so the automatic incremental backups
         make sense).  NOTE: Only of use if you do not have ebs enabled
       DESC
       task :init_backup, :roles => :db do
@@ -353,26 +353,26 @@ FILE
           sudo "/usr/local/ec2onrails/bin/backup_app_db --reset"
         end
       end
-      
+
       # do NOT run if the flag does not exist.  This is placed by a startup script
       # and it is only run on the first-startup.  This means after the db has been
-      # optimized, this task will not work again.  
+      # optimized, this task will not work again.
       #
       # Of course you can overload it or call the file directly
       task :optimize, :roles => :db do
-        server.allow_sudo do 
-          if !quiet_capture("test -e /tmp/optimize_db_flag && echo 'file exists'").empty?
+        if !quiet_capture("test -e /tmp/optimize_db_flag && echo 'file exists'").empty?
+          server.allow_sudo do
             begin
               sudo "/usr/local/ec2onrails/bin/optimize_mysql"
             ensure
               sudo "rm -rf /tmp/optimize_db_flag" #remove so we cannot run again
             end
-          else
-            puts "skipping as it looks like this task has already been run"
           end
+        else
+          puts "skipping as it looks like this task has already been run"
         end
       end
-      
+
     end
 
   end
