@@ -31,7 +31,7 @@ include Ec2onrails::CapistranoUtils
 
 
 Dir[File.join(File.dirname(__FILE__), "recipes/*")].find_all{|x| File.file? x}.each do |recipe|
-  require recipe 
+  require recipe
 end
 
 
@@ -40,9 +40,9 @@ Capistrano::Configuration.instance.load do
   unless ec2onrails_config
     raise "ec2onrails_config variable not set. (It should be a hash.)"
   end
-  
+
   cfg = ec2onrails_config
-  
+
   set :ec2onrails_version, Ec2onrails::VERSION::STRING
   set :deploy_to, "/mnt/app"
   set :use_sudo, false
@@ -50,27 +50,36 @@ Capistrano::Configuration.instance.load do
 
   #in case any changes were made to the configs
   before "deploy:cold", "ec2onrails:setup"
-  
+
   after "deploy:symlink", "ec2onrails:server:set_roles", "ec2onrails:server:init_services"
   after "deploy:cold", "ec2onrails:db:init_backup", "ec2onrails:db:optimize", "ec2onrails:server:restrict_sudo_access"
   # TODO I don't think we can do gem source -a every time because I think it adds the same repo multiple times
   after "ec2onrails:server:install_gems", "ec2onrails:server:add_gem_sources"
 
   # There's an ordering problem here. For convenience, we want to run 'rake gems:install' automatically
-  # on every deploy, but in the ec2onrails:setup task I want to do update_code before any other 
+  # on every deploy, but in the ec2onrails:setup task I want to do update_code before any other
   # setup tasks, and at that point I don't want run_rails_rake_gems_install to run. So run_rails_rake_gems_install
   # can't be triggered by an "after" hook on update_code.
   # But users might want to have their own tasks triggered after update_code, and those tasks will
   # fail if they require gems to be installed (or anything else to be set up).
-  # 
+  #
   # The best solution is to use an after hook on "deploy:symlink" or "deploy:update" instead of on
   # "deploy:update_code"
   on :load do
     before "deploy:symlink", "ec2onrails:server:run_rails_rake_gems_install"
     before "deploy:symlink", "ec2onrails:server:install_system_files"
-  end  
+  end
 
-  
+  namespace :deploy do
+    desc "Override deploy:cold for not running update_code as it is run in ec2onrails:setup"
+    task :cold do
+      #update # update calls update_code and symlink. update_code can not be called as it has been called already and gives error on rerun
+      symlink
+      migrate
+      start
+    end
+  end
+
   namespace :ec2onrails do
     desc <<-DESC
       Show the AMI id's of the current images for this version of \
@@ -82,14 +91,14 @@ Capistrano::Configuration.instance.load do
       puts "32-bit server image (EU location) for EC2 on Rails #{ec2onrails_version}: #{Ec2onrails::VERSION::AMI_ID_32_BIT_EU}"
       puts "64-bit server image (EU location) for EC2 on Rails #{ec2onrails_version}: #{Ec2onrails::VERSION::AMI_ID_64_BIT_EU}"
     end
-    
+
     desc <<-DESC
       Copies the public key from the server using the external "ssh"
       command because Net::SSH, which is used by Capistrano, needs it.
       This will only work if you have an ssh command in the path.
       If Capistrano can successfully connect to your EC2 instance you
       don't need to do this. It will copy from the first server in the
-      :app role, this can be overridden by specifying the HOST 
+      :app role, this can be overridden by specifying the HOST
       environment variable
     DESC
     task :get_public_key_from_server do
@@ -97,8 +106,8 @@ Capistrano::Configuration.instance.load do
       privkey = ssh_options[:keys][0]
       pubkey = "#{privkey}.pub"
       msg = <<-MSG
-      Your first key in ssh_options[:keys] is #{privkey}, presumably that's 
-      your EC2 private key. The public key will be copied from the server 
+      Your first key in ssh_options[:keys] is #{privkey}, presumably that's
+      your EC2 private key. The public key will be copied from the server
       named '#{host}' and saved locally as #{pubkey}. Continue? [y/n]
       MSG
       choice = nil
@@ -110,7 +119,7 @@ Capistrano::Configuration.instance.load do
         run_local "scp -i '#{privkey}' app@#{host}:.ssh/authorized_keys #{pubkey}"
       end
     end
-    
+
     desc <<-DESC
       Prepare a newly-started instance for a cold deploy.
     DESC
@@ -118,9 +127,10 @@ Capistrano::Configuration.instance.load do
       # we now have some things being included inside the app so we deploy
       # the app's code to the server before we do any other setup
       server.upload_deploy_keys
-      #deploy.setup
-      #deploy.update_code
-      
+      deploy.setup
+      # FIXME On next update_code, when directory already exists, it gives error.
+      deploy.update_code
+
       ec2onrails.server.allow_sudo do
         server.set_timezone
         server.set_mail_forward_address
@@ -142,5 +152,4 @@ Capistrano::Configuration.instance.load do
 
   end
 end
-
 
