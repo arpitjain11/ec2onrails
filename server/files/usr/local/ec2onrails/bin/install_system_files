@@ -25,7 +25,7 @@
 # of the system, keeping their subdirectories.
 #
 # For example, to replace /etc/nginx/nginx.conf with your own customized
-# version, you would create config/ec2onrails/system_files/nginx/nginx.conf
+# version, you would create config/ec2onrails/system_files/etc/nginx/nginx.conf
 # in your rails app.
 #
 # If the files being installed are overwriting an existing system file,

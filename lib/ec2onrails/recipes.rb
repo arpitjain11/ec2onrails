@@ -129,6 +129,7 @@ Capistrano::Configuration.instance.load do
       server.upload_deploy_keys
       deploy.setup
       # FIXME On next update_code, when directory already exists, it gives error.
+      # Fixed by overwriting cap deploy:cold above
       deploy.update_code
 
       ec2onrails.server.allow_sudo do

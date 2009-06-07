@@ -197,8 +197,8 @@ Capistrano::Configuration.instance.load do
               start_stop_db = god_status['db_primary']['mysql'] == 'up'
               if start_stop_db
                 stop
-                puts "Waiting for mysql to stop"
-                sleep(10)
+                #puts "Waiting for mysql to stop" # No need, stop tasks wait for mysql to shut down.
+                #sleep(10)
               end
               quiet_capture("sudo umount #{mysql_dir_root}") #unmount if need to
               puts "Checking if the filesystem needs to be created (if you created #{vol_id} yourself)"
@@ -284,10 +284,19 @@ FILE
       DESC
       task :start, :roles => :db do
         sudo "god start db_primary"
+        sleep 15
+#         while !quiet_capture("ps -C mysqld").match("mysqld")
+#           puts "Waiting for mysql to start fully"
+#           sleep(5)
+#         end
       end
 
       task :stop, :roles => :db do
         sudo "god stop db_primary"
+        while quiet_capture("ps -C mysqld").match("mysqld")
+          puts "Waiting for mysql to completely shut down"
+          sleep(5)
+        end
       end
 
 
