@@ -22,18 +22,18 @@ require "#{File.dirname(__FILE__)}/utils"
 
 module Ec2onrails
   class SystemFilesHelper
-    
+
     BACKUP_FILE_EXT = ".ec2onrails_backup"
     INSTALLED_MANIFEST_FILE = "/etc/ec2onrails/system_files/#{SystemFilesManifest::MANIFEST_FILE_NAME}"
 
     def install_system_files(from_dir)
       uninstall_system_files
-      
+
       unless File.directory?(from_dir)
         puts "no system files to install, #{from_dir} doesn't exist or is not a directory."
         return
       end
-        
+
       puts "installing system files from #{from_dir}..."
       src_manifest = File.join from_dir, SystemFilesManifest::MANIFEST_FILE_NAME
 
@@ -42,10 +42,10 @@ module Ec2onrails
         @manifest = Ec2onrails::SystemFilesManifest.new(from_dir)
         FileUtils.cp src_manifest, INSTALLED_MANIFEST_FILE
       end
-      
+
       FileUtils.cd from_dir do
-        Dir.glob("**/*").each do |f|
-          unless File.directory?(f) || File.basename(f) == SystemFilesManifest::MANIFEST_FILE_NAME
+        Dir.glob("**/.*").each do |f|
+          unless File.directory?(f) || File.basename(f) == SystemFilesManifest::MANIFEST_FILE_NAME || [".", ".."].include?(f)
             dest = File.join("/", f)
             backup(dest)
             make_dirs(dest)
@@ -54,7 +54,7 @@ module Ec2onrails
         end
       end
     end
-    
+
     def uninstall_system_files
       unless File.exist? INSTALLED_MANIFEST_FILE
         puts "not uninstalling system files, #{INSTALLED_MANIFEST_FILE} doesn't exist."
@@ -72,7 +72,7 @@ module Ec2onrails
       end
       FileUtils.rm INSTALLED_MANIFEST_FILE
     end
-    
+
     def backup(f)
       if File.exist?(f)
         puts "backing up file #{f}..."
@@ -80,7 +80,7 @@ module Ec2onrails
         FileUtils.mv f, backup_file
       end
     end
-    
+
     def restore_backup_of(f)
       backup_file = f + BACKUP_FILE_EXT
       if File.exist?(backup_file)
@@ -88,7 +88,7 @@ module Ec2onrails
         FileUtils.mv backup_file, f
       end
     end
-   
+
     def make_dirs(f)
       dir = File.dirname(f)
       unless dir == "/"
@@ -96,7 +96,7 @@ module Ec2onrails
         FileUtils.mkdir_p File.dirname(f)
       end
     end
-    
+
     def install_file(f, dest, manifest)
       puts "installing file #{f} into #{dest}..."
       FileUtils.cp f, dest
@@ -105,6 +105,6 @@ module Ec2onrails
         Utils.run "chmod #{manifest[f][:mode]} #{dest}" if manifest[f][:mode]
       end
     end
-    
+
   end
 end
