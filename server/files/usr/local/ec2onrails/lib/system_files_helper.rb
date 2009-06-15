@@ -75,14 +75,25 @@ module Ec2onrails
 
     def backup(f)
       if File.exist?(f)
-        puts "backing up file #{f}..."
-        backup_file = f + BACKUP_FILE_EXT
+        backup_file = f + "." + Time.now.strftime("%Y%m%d%H%M%S") + BACKUP_FILE_EXT
+        puts "backing up file #{f} to #{backup_file} ..."
         FileUtils.mv f, backup_file
       end
     end
 
     def restore_backup_of(f)
-      backup_file = f + BACKUP_FILE_EXT
+      file_dir = File.dirname(f)
+      file_timestamps = []
+
+      FileUtils.cd file_dir do
+        Dir.glob("**/#{f}*.ec2onrails_backup").each do |file_name|
+          puts "File exist #{file_name}"
+          file_timestamps << file_name.match("#{f}(\d+).ec2onrails_backup")[1]
+        end
+      end
+      file_timestamps.sort!
+
+      backup_file = f + "." + file_timestamps[0] + BACKUP_FILE_EXT
       if File.exist?(backup_file)
         puts "restoring backup of file #{f}..."
         FileUtils.mv backup_file, f
