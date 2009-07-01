@@ -70,16 +70,6 @@ Capistrano::Configuration.instance.load do
     before "deploy:symlink", "ec2onrails:server:install_system_files"
   end
 
-  namespace :deploy do
-    desc "Override deploy:cold for not running update_code as it is run in ec2onrails:setup"
-    task :cold do
-      #update # update calls update_code and symlink. update_code can not be called as it has been called already and gives error on rerun
-      symlink
-      migrate
-      start
-    end
-  end
-
   namespace :ec2onrails do
     desc <<-DESC
       Show the AMI id's of the current images for this version of \
@@ -153,4 +143,3 @@ Capistrano::Configuration.instance.load do
 
   end
 end
-
