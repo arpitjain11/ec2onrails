@@ -19,7 +19,9 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #exit if the current application is not deployed, meaning there is nothing to back up!
-exit unless File.exists?("/mnt/app/current")
+#Don't exit as app might not be in /mnt/app/current. It can be in /mnt/app/#{application_name}/current if you are deploying more than one app.
+# TODO Add check here for multiple apps and get RAILS_ROOT from some common place.
+#exit unless File.exists?("/mnt/app/current")
 
 require "rubygems"
 require "optiflag"
